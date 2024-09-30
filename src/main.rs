@@ -1,4 +1,5 @@
 use chrono::prelude::*;
+use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::{thread, time};
@@ -33,67 +34,73 @@ fn loading_animation(message: &str) {
 fn main() {
     show_ascii_art();
 
-    println!("Choose an option: [1] Add Entry, [2] View Entries, [3] Search Entries");
+    println!("Choose an option: [1] Add Entry, [2] View Entries, [3] Search Entries by Date, [4] Search Entries by Tag");
     let mut choice = String::new();
     io::stdin()
         .read_line(&mut choice)
         .expect("Failed to read input");
 
     match choice.trim() {
-        "1" => {
-            let date = Utc::now().format("%Y-%d-%m").to_string();
-            println!("Enter your journal entry for today:");
-
-            let mut entry = String::new();
-            io::stdin()
-                .read_line(&mut entry)
-                .expect("Failed to read input");
-
-            loading_animation("Adding entry");
-
-            if let Err(e) = add_entry(&date, &entry) {
-                eprintln!("Error writing entry: {},", e);
-            } else {
-                println!("Entry added successfully!")
-            }
-        }
-        "2" => {
-            loading_animation("Retrieving entries");
-
-            if let Err(e) = view_entries() {
-                eprintln!("Error viewing entries: {}", e);
-            }
-        }
-        "3" => {
-            println!("Enter the date for search (YYYY-DD-MM):");
-            let mut search_date = String::new();
-            io::stdin()
-                .read_line(&mut search_date)
-                .expect("Failed to read input");
-
-            loading_animation("Searching entries");
-
-            if let Err(e) = search_by_date(&search_date.trim()) {
-                eprintln!("Error searching entries: {}", e);
-            }
-        }
+        "1" => add_journal_entry(),
+        "2" => view_entries().expect("Error viewing entries"),
+        "3" => search_entries_by_date().expect("Error searching by date"),
+        "4" => search_entries_by_tag().expect("Error searching by tag"),
         _ => println!("Invalid option"),
     }
 }
 
-fn add_entry(date: &str, entry: &str) -> io::Result<()> {
+fn add_journal_entry() {
+    let date = Utc::now().format("%Y-%d-%m").to_string();
+    println!("Enter your journal entry for today:");
+
+    let mut entry = String::new();
+    io::stdin()
+        .read_line(&mut entry)
+        .expect("Failed to read input");
+
+    println!("Enter tags for this entry (separate by commas, e.g., work, personal):");
+
+    let mut tags_input = String::new();
+    io::stdin()
+        .read_line(&mut tags_input)
+        .expect("Failed to read input");
+    let tags: HashSet<String> = tags_input
+        .trim()
+        .split(',')
+        .map(|tag| tag.trim().to_string())
+        .collect();
+
+    loading_animation("Adding entry");
+
+    if let Err(e) = add_entry(&date, &entry, &tags) {
+        eprintln!("Error writing entry: {},", e);
+    } else {
+        println!("Entry added successfully!")
+    }
+}
+
+fn add_entry(date: &str, entry: &str, tags: &HashSet<String>) -> io::Result<()> {
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open("journal.txt")?;
+        .open("Journal.txt")?;
 
-    writeln!(file, "{}: {}", date, entry)?;
+    let tags_string = tags.iter().cloned().collect::<Vec<String>>().join(", ");
+    writeln!(
+        file,
+        "{} | {} | Tags: [{}]",
+        date,
+        entry.trim(),
+        tags_string
+    )?;
     Ok(())
 }
 
 fn view_entries() -> io::Result<()> {
     let file = File::open("journal.txt")?;
     let reader = BufReader::new(file);
+
+    loading_animation("Retrieving entries");
 
     println!("==== Journal Entries ====");
 
@@ -105,18 +112,52 @@ fn view_entries() -> io::Result<()> {
     Ok(())
 }
 
-fn search_by_date(search_date: &str) -> io::Result<()> {
+fn search_entries_by_date() -> io::Result<()> {
+    println!("Enter the date to search (YYYY-DD-MM):");
+
+    let mut search_date = String::new();
+    io::stdin()
+        .read_line(&mut search_date)
+        .expect("Failed to read input");
+
     let file = File::open("journal.txt")?;
     let reader = BufReader::new(file);
 
-    println!("==== Journal Entries for {} ====", search_date);
+    loading_animation("Searching entries");
+
+    println!("==== Journal Entries for {} ====", search_date.trim());
 
     for line in reader.lines() {
         let line = line?;
-        if line.contains(search_date) {
+        if line.contains(search_date.trim()) {
             println!("{}", line);
         }
     }
 
+    Ok(())
+}
+
+fn search_entries_by_tag() -> io::Result<()> {
+    println!("Enter the tag to search for (e.g., work, personal):");
+
+    let mut search_tag = String::new();
+    io::stdin()
+        .read_line(&mut search_tag)
+        .expect("Failed to read input");
+
+    let file = File::open("journal.txt")?;
+    let reader = BufReader::new(file);
+
+    loading_animation("Searching entries");
+
+    println!("==== Journal Entries for tag: {} ====", search_tag.trim());
+    for line in reader.lines() {
+        let line = line?;
+        if line.contains(&format!("Tags: [{}]", search_tag.trim()))
+            || line.contains(&format!("Tags: [{}]", search_tag.trim()))
+        {
+            println!("{}", line);
+        }
+    }
     Ok(())
 }
